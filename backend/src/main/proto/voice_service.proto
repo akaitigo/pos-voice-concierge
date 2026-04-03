@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+package posvoice;
+
+option java_package = "com.akaitigo.posvoice.grpc";
+option java_multiple_files = true;
+
+// 音声認識サービス
+service VoiceService {
+  // 音声ストリーミングによるリアルタイム認識
+  rpc StreamRecognize(stream AudioChunk) returns (stream RecognitionResult);
+
+  // 単発の音声認識
+  rpc Recognize(AudioData) returns (RecognitionResult);
+}
+
+message AudioChunk {
+  bytes data = 1;
+  string format = 2; // "wav", "webm", "opus"
+  int32 sample_rate = 3;
+}
+
+message AudioData {
+  bytes data = 1;
+  string format = 2;
+  int32 sample_rate = 3;
+}
+
+message RecognitionResult {
+  string transcript = 1;
+  float confidence = 2;
+  repeated ProductMatch matches = 3;
+  bool is_final = 4;
+}
+
+message ProductMatch {
+  string product_id = 1;
+  string product_name = 2;
+  float score = 3;
+  int32 quantity = 4;
+}
