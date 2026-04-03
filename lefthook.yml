@@ -1,10 +1,10 @@
 pre-commit:
-  parallel: true
+  parallel: false
   commands:
-    lint:
-      run: make lint
     format-check:
       run: make format
+    lint:
+      run: make lint
     test:
       run: make test
     archgate:

@@ -11,23 +11,25 @@ test-backend:
 	cd backend && ./gradlew test
 
 lint-backend:
-	cd backend && ./gradlew clean detekt
+	cd backend && ./gradlew detekt
 
 format-backend:
-	cd backend && ./gradlew formatKotlin
+	@echo "Backend formatting handled by detekt rules"
 
 # === Voice Engine (Python) ===
+VOICE_VENV := voice-engine/.venv/bin
+
 build-voice:
 	@echo "No build step for Python"
 
 test-voice:
-	cd voice-engine && pytest
+	cd voice-engine && $(CURDIR)/$(VOICE_VENV)/pytest
 
 lint-voice:
-	cd voice-engine && ruff check .
+	cd voice-engine && $(CURDIR)/$(VOICE_VENV)/ruff check .
 
 format-voice:
-	cd voice-engine && ruff format . && ruff check --fix .
+	cd voice-engine && $(CURDIR)/$(VOICE_VENV)/ruff format . && $(CURDIR)/$(VOICE_VENV)/ruff check --fix .
 
 # === Frontend (TypeScript/React) ===
 build-frontend:

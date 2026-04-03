@@ -6,10 +6,8 @@
 # === Kotlin/Gradle ===
 backend/.gradle/
 backend/build/
-backend/gradle/
-backend/gradlew
-backend/gradlew.bat
 backend/local.properties
+# NOTE: backend/gradle/ and backend/gradlew are tracked (Gradle wrapper)
 
 # === Python ===
 voice-engine/__pycache__/
