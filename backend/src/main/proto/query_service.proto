@@ -1,0 +1,89 @@
+syntax = "proto3";
+
+package posvoice;
+
+option java_multiple_files = true;
+option java_package = "com.akaitigo.posvoice.grpc";
+
+// 自然言語クエリサービス
+service QueryService {
+  // 自然言語テキストからクエリを実行し結果を返す
+  rpc ExecuteQuery(QueryRequest) returns (QueryResponse);
+
+  // 表記ゆれ辞書のエクスポート
+  rpc ExportAliases(ExportAliasesRequest) returns (ExportAliasesResponse);
+
+  // 表記ゆれ辞書のインポート
+  rpc ImportAliases(ImportAliasesRequest) returns (ImportAliasesResponse);
+
+  // 表記ゆれ辞書への学習（手動修正データの登録）
+  rpc LearnAlias(LearnAliasRequest) returns (LearnAliasResponse);
+}
+
+message QueryRequest {
+  string text = 1;
+}
+
+message QueryResponse {
+  string intent = 1;
+  string response_text = 2;
+  QueryData data = 3;
+}
+
+message QueryData {
+  oneof result {
+    SalesResult sales = 1;
+    InventoryResult inventory = 2;
+    TopProductsResult top_products = 3;
+  }
+}
+
+message SalesResult {
+  int64 total_amount = 1;
+  string period_label = 2;
+  int32 item_count = 3;
+}
+
+message InventoryResult {
+  string product_name = 1;
+  int32 stock_quantity = 2;
+}
+
+message TopProductsResult {
+  repeated TopProductEntry entries = 1;
+  string period_label = 2;
+}
+
+message TopProductEntry {
+  int32 rank = 1;
+  string product_name = 2;
+  int64 total_amount = 3;
+  int32 quantity_sold = 4;
+}
+
+message ExportAliasesRequest {}
+
+message ExportAliasesResponse {
+  string json_data = 1;
+  int32 count = 2;
+}
+
+message ImportAliasesRequest {
+  string json_data = 1;
+}
+
+message ImportAliasesResponse {
+  int32 imported_count = 1;
+  bool success = 2;
+  string message = 3;
+}
+
+message LearnAliasRequest {
+  string recognized_text = 1;
+  string correct_product_name = 2;
+}
+
+message LearnAliasResponse {
+  bool success = 1;
+  string message = 2;
+}

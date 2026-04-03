@@ -1,10 +1,12 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import "./App.css";
 import { MatchList } from "./components/MatchList";
 import { MicButton } from "./components/MicButton";
 import { ProductSearch } from "./components/ProductSearch";
+import { QueryResultDisplay } from "./components/QueryResultDisplay";
 import { TranscriptDisplay } from "./components/TranscriptDisplay";
 import { useProductSearch } from "./hooks/useProductSearch";
+import { useQuery } from "./hooks/useQuery";
 import { useTts } from "./hooks/useTts";
 import { useVoice } from "./hooks/useVoice";
 import type { AliasRegistration, AliasRegistrationResponse, ProductMatch, ProductSearchResult } from "./types";
@@ -27,6 +29,7 @@ export function App(): React.JSX.Element {
 	const { ttsState, speak } = useTts();
 	const { searchResults, isSearching, searchError, isRegistering, searchProducts, registerAlias, clearSearch } =
 		useProductSearch();
+	const { queryResult, isQuerying, queryError, executeQuery, clearQuery } = useQuery();
 
 	const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
 	const [confirmedProduct, setConfirmedProduct] = useState<ConfirmedProduct | null>(null);
@@ -93,12 +96,27 @@ export function App(): React.JSX.Element {
 		[speak, registerAlias],
 	);
 
+	// 認識結果がfinalで、マッチなしの場合はクエリとして実行
+	useEffect(() => {
+		if (result?.isFinal && result.matches.length === 0 && result.transcript.length > 0) {
+			void executeQuery(result.transcript);
+		}
+	}, [result, executeQuery]);
+
+	// クエリ結果が出たらTTSで読み上げ
+	useEffect(() => {
+		if (queryResult) {
+			speak(queryResult.responseText);
+		}
+	}, [queryResult, speak]);
+
 	const handleReset = useCallback((): void => {
 		setConfirmedProduct(null);
 		setSelectedProductId(null);
 		setShowSearch(false);
 		setAliasFeedback(null);
-	}, []);
+		clearQuery();
+	}, [clearQuery]);
 
 	return (
 		<div className="pos-voice-concierge">
@@ -159,6 +177,14 @@ export function App(): React.JSX.Element {
 					{aliasFeedback.message}
 				</output>
 			)}
+
+			{isQuerying && <p className="pos-voice-concierge__querying">クエリ実行中...</p>}
+			{queryError && (
+				<div className="error-display" role="alert">
+					<p>{queryError}</p>
+				</div>
+			)}
+			{queryResult && <QueryResultDisplay result={queryResult} />}
 		</div>
 	);
 }

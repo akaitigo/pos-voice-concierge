@@ -12,13 +12,15 @@ from typing import TYPE_CHECKING
 import grpc
 
 from pos_voice_concierge.audio_converter import AudioConversionError, convert_to_wav
-from pos_voice_concierge.generated import voice_service_pb2, voice_service_pb2_grpc
+from pos_voice_concierge.generated import query_service_pb2_grpc, voice_service_pb2, voice_service_pb2_grpc
+from pos_voice_concierge.query_service import QueryServiceServicer
 from pos_voice_concierge.whisper_engine import TranscriptionError
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
     from pos_voice_concierge.fuzzy_matcher import FuzzyMatcher
+    from pos_voice_concierge.product_repository import ProductRepository
     from pos_voice_concierge.whisper_engine import TranscriptionEngine
 
 logger = logging.getLogger(__name__)
@@ -177,6 +179,7 @@ def create_server(
     matcher: FuzzyMatcher,
     port: int = DEFAULT_PORT,
     max_workers: int = 4,
+    repository: ProductRepository | None = None,
 ) -> grpc.Server:
     """gRPC サーバーを作成する.
 
@@ -185,6 +188,7 @@ def create_server(
         matcher: 商品名ファジーマッチャー
         port: リッスンポート
         max_workers: ワーカースレッド数
+        repository: 商品リポジトリ（DB接続時）
 
     Returns:
         設定済みの gRPC サーバー
@@ -192,6 +196,10 @@ def create_server(
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=max_workers))
     servicer = VoiceServiceServicer(engine, matcher)
     voice_service_pb2_grpc.add_VoiceServiceServicer_to_server(servicer, server)
+
+    query_servicer = QueryServiceServicer(matcher, repository)
+    query_service_pb2_grpc.add_QueryServiceServicer_to_server(query_servicer, server)
+
     server.add_insecure_port(f"[::]:{port}")
     return server
 

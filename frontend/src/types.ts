@@ -61,3 +61,38 @@ export interface RawProductSearchData {
 	janCode?: unknown;
 	price?: unknown;
 }
+
+/** クエリ結果 */
+export interface QueryResult {
+	readonly intent: string;
+	readonly responseText: string;
+	readonly data: Record<string, unknown>;
+}
+
+/** 売上集計レスポンス */
+export interface SalesQueryResponse {
+	readonly totalAmount: number;
+	readonly periodLabel: string;
+	readonly itemCount: number;
+	readonly productName?: string;
+}
+
+/** 在庫照会レスポンス */
+export interface InventoryQueryResponse {
+	readonly productName: string;
+	readonly stockQuantity: number;
+}
+
+/** 売上トップN レスポンス */
+export interface TopProductsQueryResponse {
+	readonly entries: readonly TopProductEntryResponse[];
+	readonly periodLabel: string;
+}
+
+/** 売上トップ商品エントリ */
+export interface TopProductEntryResponse {
+	readonly rank: number;
+	readonly productName: string;
+	readonly totalAmount: number;
+	readonly quantitySold: number;
+}
