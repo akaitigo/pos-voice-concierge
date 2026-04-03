@@ -1,23 +1,7 @@
 import { useCallback, useRef, useState } from "react";
+import type { ProductMatch, RawProductMatchData, RawRecognitionData, RecognitionResult, VoiceState } from "../types";
 
-/** 音声認識の状態 */
-export type VoiceState = "idle" | "listening" | "processing" | "error";
-
-/** 商品マッチング結果 */
-export interface ProductMatch {
-	readonly productId: string;
-	readonly productName: string;
-	readonly score: number;
-	readonly quantity: number;
-}
-
-/** 認識結果 */
-export interface RecognitionResult {
-	readonly transcript: string;
-	readonly confidence: number;
-	readonly isFinal: boolean;
-	readonly matches: readonly ProductMatch[];
-}
+export type { ProductMatch, RecognitionResult, VoiceState };
 
 /** useVoice フックの戻り値 */
 export interface UseVoiceReturn {
@@ -195,21 +179,6 @@ function getSupportedMimeType(): string {
 	}
 
 	return "audio/webm";
-}
-
-/** パース用の型定義 */
-interface RawRecognitionData {
-	transcript?: unknown;
-	confidence?: unknown;
-	isFinal?: unknown;
-	matches?: unknown;
-}
-
-interface RawProductMatchData {
-	productId?: unknown;
-	productName?: unknown;
-	score?: unknown;
-	quantity?: unknown;
 }
 
 /** JSON 文字列を RecognitionResult にパースする */
