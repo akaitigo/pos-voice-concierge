@@ -2,7 +2,7 @@ import { useState } from "react";
 
 type RecognitionState = "idle" | "listening" | "processing";
 
-export function App(): JSX.Element {
+export function App(): React.JSX.Element {
 	const [state, setState] = useState<RecognitionState>("idle");
 	const [transcript, setTranscript] = useState<string>("");
 
