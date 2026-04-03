@@ -1,0 +1,36 @@
+syntax = "proto3";
+
+package posvoice;
+
+option java_package = "com.akaitigo.posvoice.grpc";
+option java_multiple_files = true;
+
+// 自然言語クエリサービス
+service QueryService {
+  // テキストクエリによる売上・在庫照会
+  rpc Query(QueryRequest) returns (QueryResponse);
+}
+
+message QueryRequest {
+  string text = 1;
+  string store_id = 2;
+}
+
+message QueryResponse {
+  QueryIntent intent = 1;
+  string answer_text = 2;
+  repeated QueryDataItem data = 3;
+}
+
+enum QueryIntent {
+  UNKNOWN = 0;
+  SALES_TODAY = 1;
+  SALES_PERIOD = 2;
+  INVENTORY_CHECK = 3;
+  TOP_PRODUCTS = 4;
+}
+
+message QueryDataItem {
+  string label = 1;
+  string value = 2;
+}

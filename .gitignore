@@ -1,0 +1,47 @@
+# === IDE ===
+.idea/
+.vscode/
+*.iml
+
+# === Kotlin/Gradle ===
+backend/.gradle/
+backend/build/
+backend/gradle/
+backend/gradlew
+backend/gradlew.bat
+backend/local.properties
+
+# === Python ===
+voice-engine/__pycache__/
+voice-engine/.pytest_cache/
+voice-engine/.ruff_cache/
+voice-engine/*.egg-info/
+voice-engine/.venv/
+voice-engine/dist/
+*.pyc
+.coverage
+htmlcov/
+
+# === TypeScript/Node ===
+frontend/node_modules/
+frontend/dist/
+frontend/coverage/
+frontend/.cache/
+
+# === 環境・機密 ===
+.env
+.env.local
+.env.production
+.env.staging
+.env.development
+credentials.json
+secrets.yml
+*.pem
+*.key
+
+# === OS ===
+.DS_Store
+Thumbs.db
+
+# === Claude ===
+CLAUDE.backup.md
