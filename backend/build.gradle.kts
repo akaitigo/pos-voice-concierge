@@ -21,6 +21,7 @@ dependencies {
     implementation("io.quarkus:quarkus-rest-jackson")
     implementation("io.quarkus:quarkus-grpc")
     implementation("io.quarkus:quarkus-websockets")
+    implementation("com.google.protobuf:protobuf-kotlin:3.25.5")
     implementation("io.quarkus:quarkus-jdbc-postgresql")
     implementation("io.quarkus:quarkus-hibernate-orm-panache-kotlin")
     implementation("io.quarkus:quarkus-flyway")

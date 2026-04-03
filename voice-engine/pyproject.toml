@@ -8,6 +8,7 @@ dependencies = [
     "grpcio-tools>=1.60",
     "openai-whisper>=20240930",
     "rapidfuzz>=3.6",
+    "numpy>=1.26",
 ]
 
 [project.optional-dependencies]
@@ -107,6 +108,11 @@ max-branches = 12
     "ANN",
     "ARG",
     "PLR2004",
+    "SLF001",
+    "SIM117",
+]
+"src/pos_voice_concierge/generated/**" = [
+    "ALL",
 ]
 
 [tool.ruff.format]
