@@ -274,7 +274,9 @@ class QueryServiceServicer(query_service_pb2_grpc.QueryServiceServicer):
             try:
                 if product_name is not None:
                     result = self._repository.product_sales_between(
-                        product_name, from_dt, to_dt,
+                        product_name,
+                        from_dt,
+                        to_dt,
                     )
                 else:
                     result = self._repository.total_sales_between(from_dt, to_dt)
@@ -391,7 +393,9 @@ class QueryServiceServicer(query_service_pb2_grpc.QueryServiceServicer):
         if self._repository is not None:
             try:
                 db_entries = self._repository.top_products_between(
-                    from_dt, to_dt, requested_n,
+                    from_dt,
+                    to_dt,
+                    requested_n,
                 )
                 entries = [
                     ResponseTopProductEntry(

@@ -48,13 +48,18 @@ def servicer(matcher: FuzzyMatcher) -> QueryServiceServicer:
 def mock_repository() -> MagicMock:
     repo = MagicMock()
     repo.total_sales_between.return_value = SalesResult(
-        total_amount=125000, item_count=42, period_label="",
+        total_amount=125000,
+        item_count=42,
+        period_label="",
     )
     repo.product_sales_between.return_value = SalesResult(
-        total_amount=30000, item_count=10, period_label="",
+        total_amount=30000,
+        item_count=10,
+        period_label="",
     )
     repo.find_stock_by_product_name.return_value = InventoryResult(
-        product_name="コカコーラ", stock_quantity=24,
+        product_name="コカコーラ",
+        stock_quantity=24,
     )
     repo.top_products_between.return_value = [
         RepoTopProductEntry(rank=1, product_name="コカコーラ", total_amount=50000, quantity_sold=100),
@@ -112,7 +117,10 @@ class TestExecuteQueryWithRepository:
     """Repository接続時のExecuteQuery RPCテスト."""
 
     def test_sales_inquiry_returns_real_data(
-        self, servicer_with_repo, context, mock_repository,
+        self,
+        servicer_with_repo,
+        context,
+        mock_repository,
     ):
         request = query_service_pb2.QueryRequest(text="今日の売上は？")
         response = servicer_with_repo.ExecuteQuery(request, context)
@@ -124,7 +132,10 @@ class TestExecuteQueryWithRepository:
         mock_repository.product_sales_between.assert_called()
 
     def test_sales_inquiry_total_without_product(
-        self, servicer_with_repo, context, mock_repository,
+        self,
+        servicer_with_repo,
+        context,
+        mock_repository,
     ):
         """商品名スロットなしの売上照会で total_sales_between が呼ばれること."""
         request = query_service_pb2.QueryRequest(text="売上いくら？")
@@ -135,7 +146,10 @@ class TestExecuteQueryWithRepository:
         mock_repository.total_sales_between.assert_called_once()
 
     def test_inventory_inquiry_returns_real_data(
-        self, servicer_with_repo, context, mock_repository,
+        self,
+        servicer_with_repo,
+        context,
+        mock_repository,
     ):
         request = query_service_pb2.QueryRequest(text="コカコーラの在庫は？")
         response = servicer_with_repo.ExecuteQuery(request, context)
@@ -145,7 +159,10 @@ class TestExecuteQueryWithRepository:
         mock_repository.find_stock_by_product_name.assert_called_once()
 
     def test_top_products_returns_real_data(
-        self, servicer_with_repo, context, mock_repository,
+        self,
+        servicer_with_repo,
+        context,
+        mock_repository,
     ):
         request = query_service_pb2.QueryRequest(text="売上トップ5を教えて")
         response = servicer_with_repo.ExecuteQuery(request, context)
@@ -156,7 +173,10 @@ class TestExecuteQueryWithRepository:
         mock_repository.top_products_between.assert_called_once()
 
     def test_inventory_not_found_returns_zero(
-        self, servicer_with_repo, context, mock_repository,
+        self,
+        servicer_with_repo,
+        context,
+        mock_repository,
     ):
         mock_repository.find_stock_by_product_name.return_value = None
         request = query_service_pb2.QueryRequest(text="おにぎりの在庫は？")
@@ -165,7 +185,10 @@ class TestExecuteQueryWithRepository:
         assert response.data.inventory.stock_quantity == 0
 
     def test_sales_with_db_error_falls_back_to_zero(
-        self, servicer_with_repo, context, mock_repository,
+        self,
+        servicer_with_repo,
+        context,
+        mock_repository,
     ):
         # インテント分類器が「今日」を商品名としても抽出するため、
         # product_sales_between のエラーハンドリングをテスト
@@ -176,7 +199,10 @@ class TestExecuteQueryWithRepository:
         assert response.data.sales.total_amount == 0
 
     def test_inventory_with_db_error_falls_back_to_zero(
-        self, servicer_with_repo, context, mock_repository,
+        self,
+        servicer_with_repo,
+        context,
+        mock_repository,
     ):
         mock_repository.find_stock_by_product_name.side_effect = RuntimeError("DB error")
         request = query_service_pb2.QueryRequest(text="コカコーラの在庫は？")
@@ -185,7 +211,10 @@ class TestExecuteQueryWithRepository:
         assert response.data.inventory.stock_quantity == 0
 
     def test_top_products_with_db_error_returns_empty(
-        self, servicer_with_repo, context, mock_repository,
+        self,
+        servicer_with_repo,
+        context,
+        mock_repository,
     ):
         mock_repository.top_products_between.side_effect = RuntimeError("DB error")
         request = query_service_pb2.QueryRequest(text="売上トップ5を教えて")
