@@ -10,7 +10,14 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from pos_voice_concierge.product_repository import Alias, Product, ProductRepository
+from pos_voice_concierge.product_repository import (
+    Alias,
+    InventoryResult,
+    Product,
+    ProductRepository,
+    SalesResult,
+    TopProductEntry,
+)
 
 
 def _make_mock_conn():
@@ -186,3 +193,105 @@ class TestExportImportJson:
         json_str = json.dumps([{"alias": "test"}])
         with pytest.raises(KeyError):
             repo.import_aliases_json(json_str)
+
+
+class TestTotalSalesBetween:
+    """売上合計取得のテスト."""
+
+    def test_returns_sales_result(self) -> None:
+        conn, cursor = _make_mock_conn()
+        cursor.fetchone.return_value = (125000, 42)
+        repo = ProductRepository(conn)
+        from_dt = datetime(2026, 4, 5, 0, 0, 0, tzinfo=UTC)
+        to_dt = datetime(2026, 4, 6, 0, 0, 0, tzinfo=UTC)
+        result = repo.total_sales_between(from_dt, to_dt)
+
+        assert result == SalesResult(total_amount=125000, item_count=42, period_label="")
+        cursor.execute.assert_called_once()
+
+    def test_returns_zero_when_no_data(self) -> None:
+        conn, cursor = _make_mock_conn()
+        cursor.fetchone.return_value = (0, 0)
+        repo = ProductRepository(conn)
+        from_dt = datetime(2026, 4, 5, 0, 0, 0, tzinfo=UTC)
+        to_dt = datetime(2026, 4, 6, 0, 0, 0, tzinfo=UTC)
+        result = repo.total_sales_between(from_dt, to_dt)
+
+        assert result.total_amount == 0
+        assert result.item_count == 0
+
+    def test_returns_zero_when_none_row(self) -> None:
+        conn, cursor = _make_mock_conn()
+        cursor.fetchone.return_value = None
+        repo = ProductRepository(conn)
+        from_dt = datetime(2026, 4, 5, 0, 0, 0, tzinfo=UTC)
+        to_dt = datetime(2026, 4, 6, 0, 0, 0, tzinfo=UTC)
+        result = repo.total_sales_between(from_dt, to_dt)
+
+        assert result.total_amount == 0
+        assert result.item_count == 0
+
+
+class TestProductSalesBetween:
+    """商品別売上取得のテスト."""
+
+    def test_returns_product_sales(self) -> None:
+        conn, cursor = _make_mock_conn()
+        cursor.fetchone.return_value = (30000, 10)
+        repo = ProductRepository(conn)
+        from_dt = datetime(2026, 4, 5, 0, 0, 0, tzinfo=UTC)
+        to_dt = datetime(2026, 4, 6, 0, 0, 0, tzinfo=UTC)
+        result = repo.product_sales_between("コカコーラ", from_dt, to_dt)
+
+        assert result.total_amount == 30000
+        assert result.item_count == 10
+
+
+class TestFindStockByProductName:
+    """在庫照会のテスト."""
+
+    def test_found(self) -> None:
+        conn, cursor = _make_mock_conn()
+        cursor.fetchone.return_value = ("コカコーラ", 24)
+        repo = ProductRepository(conn)
+        result = repo.find_stock_by_product_name("コカコーラ")
+
+        assert result is not None
+        assert result == InventoryResult(product_name="コカコーラ", stock_quantity=24)
+
+    def test_not_found(self) -> None:
+        conn, cursor = _make_mock_conn()
+        cursor.fetchone.return_value = None
+        repo = ProductRepository(conn)
+        result = repo.find_stock_by_product_name("存在しない商品")
+
+        assert result is None
+
+
+class TestTopProductsBetween:
+    """売上トップN取得のテスト."""
+
+    def test_returns_top_products(self) -> None:
+        conn, cursor = _make_mock_conn()
+        cursor.fetchall.return_value = [
+            ("コカコーラ", 50000, 100),
+            ("お茶", 30000, 75),
+        ]
+        repo = ProductRepository(conn)
+        from_dt = datetime(2026, 4, 5, 0, 0, 0, tzinfo=UTC)
+        to_dt = datetime(2026, 4, 6, 0, 0, 0, tzinfo=UTC)
+        result = repo.top_products_between(from_dt, to_dt, 5)
+
+        assert len(result) == 2
+        assert result[0] == TopProductEntry(rank=1, product_name="コカコーラ", total_amount=50000, quantity_sold=100)
+        assert result[1] == TopProductEntry(rank=2, product_name="お茶", total_amount=30000, quantity_sold=75)
+
+    def test_returns_empty_when_no_data(self) -> None:
+        conn, cursor = _make_mock_conn()
+        cursor.fetchall.return_value = []
+        repo = ProductRepository(conn)
+        from_dt = datetime(2026, 4, 5, 0, 0, 0, tzinfo=UTC)
+        to_dt = datetime(2026, 4, 6, 0, 0, 0, tzinfo=UTC)
+        result = repo.top_products_between(from_dt, to_dt, 5)
+
+        assert result == []

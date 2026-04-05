@@ -3,12 +3,20 @@
 from __future__ import annotations
 
 import json
+from unittest.mock import MagicMock
 
 import grpc  # noqa: TC002
 import pytest
 
 from pos_voice_concierge.fuzzy_matcher import FuzzyMatcher
 from pos_voice_concierge.generated import query_service_pb2
+from pos_voice_concierge.product_repository import (
+    InventoryResult,
+    SalesResult,
+)
+from pos_voice_concierge.product_repository import (
+    TopProductEntry as RepoTopProductEntry,
+)
 from pos_voice_concierge.query_service import QueryServiceServicer
 
 
@@ -34,6 +42,33 @@ def matcher() -> FuzzyMatcher:
 @pytest.fixture
 def servicer(matcher: FuzzyMatcher) -> QueryServiceServicer:
     return QueryServiceServicer(matcher=matcher, repository=None)
+
+
+@pytest.fixture
+def mock_repository() -> MagicMock:
+    repo = MagicMock()
+    repo.total_sales_between.return_value = SalesResult(
+        total_amount=125000, item_count=42, period_label="",
+    )
+    repo.product_sales_between.return_value = SalesResult(
+        total_amount=30000, item_count=10, period_label="",
+    )
+    repo.find_stock_by_product_name.return_value = InventoryResult(
+        product_name="コカコーラ", stock_quantity=24,
+    )
+    repo.top_products_between.return_value = [
+        RepoTopProductEntry(rank=1, product_name="コカコーラ", total_amount=50000, quantity_sold=100),
+        RepoTopProductEntry(rank=2, product_name="お茶", total_amount=30000, quantity_sold=75),
+    ]
+    return repo
+
+
+@pytest.fixture
+def servicer_with_repo(
+    matcher: FuzzyMatcher,
+    mock_repository: MagicMock,
+) -> QueryServiceServicer:
+    return QueryServiceServicer(matcher=matcher, repository=mock_repository)
 
 
 @pytest.fixture
@@ -71,6 +106,92 @@ class TestExecuteQuery:
         request = query_service_pb2.QueryRequest(text="")
         response = servicer.ExecuteQuery(request, context)
         assert response.intent == "unknown"
+
+
+class TestExecuteQueryWithRepository:
+    """Repository接続時のExecuteQuery RPCテスト."""
+
+    def test_sales_inquiry_returns_real_data(
+        self, servicer_with_repo, context, mock_repository,
+    ):
+        request = query_service_pb2.QueryRequest(text="今日の売上は？")
+        response = servicer_with_repo.ExecuteQuery(request, context)
+        assert response.intent == "sales_inquiry"
+        # インテント分類器が「今日」を商品名スロットとしても抽出するため、
+        # product_sales_between が呼ばれる（total_sales_between ではない）
+        assert response.data.sales.total_amount == 30000
+        assert response.data.sales.item_count == 10
+        mock_repository.product_sales_between.assert_called()
+
+    def test_sales_inquiry_total_without_product(
+        self, servicer_with_repo, context, mock_repository,
+    ):
+        """商品名スロットなしの売上照会で total_sales_between が呼ばれること."""
+        request = query_service_pb2.QueryRequest(text="売上いくら？")
+        response = servicer_with_repo.ExecuteQuery(request, context)
+        assert response.intent == "sales_inquiry"
+        assert response.data.sales.total_amount == 125000
+        assert response.data.sales.item_count == 42
+        mock_repository.total_sales_between.assert_called_once()
+
+    def test_inventory_inquiry_returns_real_data(
+        self, servicer_with_repo, context, mock_repository,
+    ):
+        request = query_service_pb2.QueryRequest(text="コカコーラの在庫は？")
+        response = servicer_with_repo.ExecuteQuery(request, context)
+        assert response.intent == "inventory_inquiry"
+        assert response.data.inventory.stock_quantity == 24
+        assert "24個" in response.response_text
+        mock_repository.find_stock_by_product_name.assert_called_once()
+
+    def test_top_products_returns_real_data(
+        self, servicer_with_repo, context, mock_repository,
+    ):
+        request = query_service_pb2.QueryRequest(text="売上トップ5を教えて")
+        response = servicer_with_repo.ExecuteQuery(request, context)
+        assert response.intent == "top_products"
+        assert len(response.data.top_products.entries) == 2
+        assert response.data.top_products.entries[0].product_name == "コカコーラ"
+        assert response.data.top_products.entries[0].total_amount == 50000
+        mock_repository.top_products_between.assert_called_once()
+
+    def test_inventory_not_found_returns_zero(
+        self, servicer_with_repo, context, mock_repository,
+    ):
+        mock_repository.find_stock_by_product_name.return_value = None
+        request = query_service_pb2.QueryRequest(text="おにぎりの在庫は？")
+        response = servicer_with_repo.ExecuteQuery(request, context)
+        assert response.intent == "inventory_inquiry"
+        assert response.data.inventory.stock_quantity == 0
+
+    def test_sales_with_db_error_falls_back_to_zero(
+        self, servicer_with_repo, context, mock_repository,
+    ):
+        # インテント分類器が「今日」を商品名としても抽出するため、
+        # product_sales_between のエラーハンドリングをテスト
+        mock_repository.product_sales_between.side_effect = RuntimeError("DB connection lost")
+        request = query_service_pb2.QueryRequest(text="今日の売上は？")
+        response = servicer_with_repo.ExecuteQuery(request, context)
+        assert response.intent == "sales_inquiry"
+        assert response.data.sales.total_amount == 0
+
+    def test_inventory_with_db_error_falls_back_to_zero(
+        self, servicer_with_repo, context, mock_repository,
+    ):
+        mock_repository.find_stock_by_product_name.side_effect = RuntimeError("DB error")
+        request = query_service_pb2.QueryRequest(text="コカコーラの在庫は？")
+        response = servicer_with_repo.ExecuteQuery(request, context)
+        assert response.intent == "inventory_inquiry"
+        assert response.data.inventory.stock_quantity == 0
+
+    def test_top_products_with_db_error_returns_empty(
+        self, servicer_with_repo, context, mock_repository,
+    ):
+        mock_repository.top_products_between.side_effect = RuntimeError("DB error")
+        request = query_service_pb2.QueryRequest(text="売上トップ5を教えて")
+        response = servicer_with_repo.ExecuteQuery(request, context)
+        assert response.intent == "top_products"
+        assert len(response.data.top_products.entries) == 0
 
 
 class TestLearnAlias:
@@ -215,3 +336,22 @@ class TestE2EQueryFlow:
         aliases = {e["alias"]: e["product_name"] for e in exported}
         assert aliases["コーラ"] == "コカコーラ"
         assert aliases["緑茶"] == "お茶"
+
+    def test_sales_query_with_repo_e2e(self, servicer_with_repo, context):
+        """Repository接続時の売上照会E2Eフロー."""
+        request = query_service_pb2.QueryRequest(text="今日の売上は？")
+        response = servicer_with_repo.ExecuteQuery(request, context)
+        assert response.intent == "sales_inquiry"
+        assert response.data.HasField("sales")
+        # インテント分類器が「今日」を商品名としても抽出するため、
+        # product_sales_between のモック値が返る
+        assert response.data.sales.total_amount == 30000
+        assert "30,000円" in response.response_text
+
+    def test_inventory_query_with_repo_e2e(self, servicer_with_repo, context):
+        """Repository接続時の在庫照会E2Eフロー."""
+        request = query_service_pb2.QueryRequest(text="コカコーラの在庫は？")
+        response = servicer_with_repo.ExecuteQuery(request, context)
+        assert response.intent == "inventory_inquiry"
+        assert response.data.HasField("inventory")
+        assert response.data.inventory.stock_quantity == 24

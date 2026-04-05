@@ -1,5 +1,6 @@
 package com.akaitigo.posvoice.query
 
+import jakarta.annotation.security.RolesAllowed
 import jakarta.inject.Inject
 import jakarta.transaction.Transactional
 import jakarta.ws.rs.Consumes
@@ -19,10 +20,12 @@ import java.time.ZoneId
  * 自然言語クエリ REST API.
  *
  * 売上集計、在庫照会、売上トップN、辞書管理のエンドポイントを提供する。
+ * 全エンドポイントは Bearer Token (API Key) 認証で保護される。
  */
 @Path("/api/query")
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
+@RolesAllowed("query-user")
 class QueryResource {
 
     @Inject

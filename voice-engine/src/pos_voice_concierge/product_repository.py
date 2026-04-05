@@ -35,6 +35,33 @@ class Alias:
     created_at: datetime
 
 
+@dataclass(frozen=True)
+class SalesResult:
+    """売上集計結果."""
+
+    total_amount: int
+    item_count: int
+    period_label: str
+
+
+@dataclass(frozen=True)
+class InventoryResult:
+    """在庫照会結果."""
+
+    product_name: str
+    stock_quantity: int
+
+
+@dataclass(frozen=True)
+class TopProductEntry:
+    """売上トップ商品エントリ."""
+
+    rank: int
+    product_name: str
+    total_amount: int
+    quantity_sold: int
+
+
 class ProductRepository:
     """PostgreSQL を使った商品マスタ・表記ゆれ辞書の永続化.
 
@@ -191,3 +218,136 @@ class ProductRepository:
         entries: list[dict[str, str]] = json.loads(json_str)
         aliases = [(entry["alias"], entry["product_name"]) for entry in entries]
         return self.save_aliases_batch(aliases)
+
+    def total_sales_between(
+        self,
+        from_dt: datetime,
+        to_dt: datetime,
+    ) -> SalesResult:
+        """指定期間の売上合計を取得する.
+
+        Args:
+            from_dt: 開始日時（inclusive）
+            to_dt: 終了日時（exclusive）
+
+        Returns:
+            売上集計結果
+        """
+        with self._conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT COALESCE(SUM(total_price), 0), COUNT(*)
+                FROM sales
+                WHERE sold_at >= %s AND sold_at < %s
+                """,
+                (from_dt, to_dt),
+            )
+            row = cur.fetchone()
+            if row is None:
+                return SalesResult(total_amount=0, item_count=0, period_label="")
+            return SalesResult(
+                total_amount=int(row[0]),
+                item_count=int(row[1]),
+                period_label="",
+            )
+
+    def product_sales_between(
+        self,
+        product_name: str,
+        from_dt: datetime,
+        to_dt: datetime,
+    ) -> SalesResult:
+        """指定商品の期間別売上合計を取得する.
+
+        Args:
+            product_name: 商品名
+            from_dt: 開始日時（inclusive）
+            to_dt: 終了日時（exclusive）
+
+        Returns:
+            売上集計結果
+        """
+        with self._conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT COALESCE(SUM(s.total_price), 0), COUNT(*)
+                FROM sales s
+                JOIN products p ON s.product_id = p.id
+                WHERE p.name = %s AND s.sold_at >= %s AND s.sold_at < %s
+                """,
+                (product_name, from_dt, to_dt),
+            )
+            row = cur.fetchone()
+            if row is None:
+                return SalesResult(total_amount=0, item_count=0, period_label="")
+            return SalesResult(
+                total_amount=int(row[0]),
+                item_count=int(row[1]),
+                period_label="",
+            )
+
+    def find_stock_by_product_name(self, product_name: str) -> InventoryResult | None:
+        """商品名で在庫数を取得する.
+
+        Args:
+            product_name: 商品名
+
+        Returns:
+            在庫結果。見つからない場合は None。
+        """
+        with self._conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT p.name, i.quantity
+                FROM inventory i
+                JOIN products p ON i.product_id = p.id
+                WHERE p.name = %s
+                """,
+                (product_name,),
+            )
+            row = cur.fetchone()
+            if row is None:
+                return None
+            return InventoryResult(
+                product_name=str(row[0]),
+                stock_quantity=int(row[1]),
+            )
+
+    def top_products_between(
+        self,
+        from_dt: datetime,
+        to_dt: datetime,
+        limit: int = 5,
+    ) -> list[TopProductEntry]:
+        """指定期間の売上トップN商品を取得する.
+
+        Args:
+            from_dt: 開始日時（inclusive）
+            to_dt: 終了日時（exclusive）
+            limit: 取得件数
+
+        Returns:
+            売上トップ商品リスト
+        """
+        with self._conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT p.name, SUM(s.total_price), SUM(s.quantity)
+                FROM sales s
+                JOIN products p ON s.product_id = p.id
+                WHERE s.sold_at >= %s AND s.sold_at < %s
+                GROUP BY p.name
+                ORDER BY SUM(s.total_price) DESC
+                LIMIT %s
+                """,
+                (from_dt, to_dt, limit),
+            )
+            return [
+                TopProductEntry(
+                    rank=idx + 1,
+                    product_name=str(row[0]),
+                    total_amount=int(row[1]),
+                    quantity_sold=int(row[2]),
+                )
+                for idx, row in enumerate(cur.fetchall())
+            ]

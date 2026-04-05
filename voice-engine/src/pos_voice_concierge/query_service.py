@@ -6,7 +6,9 @@
 from __future__ import annotations
 
 import logging
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
+from zoneinfo import ZoneInfo
 
 from pos_voice_concierge.generated import query_service_pb2, query_service_pb2_grpc
 from pos_voice_concierge.intent_classifier import Intent, classify
@@ -24,6 +26,59 @@ if TYPE_CHECKING:
     from pos_voice_concierge.product_repository import ProductRepository
 
 logger = logging.getLogger(__name__)
+
+_JST = ZoneInfo("Asia/Tokyo")
+
+_PERIOD_MAP: dict[str, str] = {
+    "today": "今日",
+    "yesterday": "昨日",
+    "this_week": "今週",
+    "last_week": "先週",
+    "this_month": "今月",
+    "last_month": "先月",
+}
+
+
+def _resolve_period(period_key: str) -> tuple[datetime, datetime]:
+    """期間キーからUTC datetime の (from, to) を返す.
+
+    Args:
+        period_key: 期間キー（today, yesterday, this_week, etc.）
+
+    Returns:
+        (from_dt, to_dt) のタプル（両方 aware datetime, UTC）
+    """
+    now_jst = datetime.now(tz=_JST)
+    today = now_jst.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    if period_key == "today":
+        from_dt = today
+        to_dt = today + timedelta(days=1)
+    elif period_key == "yesterday":
+        from_dt = today - timedelta(days=1)
+        to_dt = today
+    elif period_key == "this_week":
+        monday = today - timedelta(days=today.weekday())
+        from_dt = monday
+        to_dt = today + timedelta(days=1)
+    elif period_key == "last_week":
+        monday = today - timedelta(days=today.weekday())
+        last_monday = monday - timedelta(weeks=1)
+        from_dt = last_monday
+        to_dt = monday
+    elif period_key == "this_month":
+        from_dt = today.replace(day=1)
+        to_dt = today + timedelta(days=1)
+    elif period_key == "last_month":
+        first_this_month = today.replace(day=1)
+        last_month_end = first_this_month - timedelta(days=1)
+        from_dt = last_month_end.replace(day=1)
+        to_dt = first_this_month
+    else:
+        from_dt = today
+        to_dt = today + timedelta(days=1)
+
+    return (from_dt.astimezone(UTC), to_dt.astimezone(UTC))
 
 
 class QueryServiceServicer(query_service_pb2_grpc.QueryServiceServicer):
@@ -201,24 +256,37 @@ class QueryServiceServicer(query_service_pb2_grpc.QueryServiceServicer):
         from pos_voice_concierge.intent_classifier import SlotValue  # noqa: PLC0415
         from pos_voice_concierge.response_generator import SalesData  # noqa: PLC0415
 
-        period_label = "今日"
+        period_key = "today"
+        product_name: str | None = None
         for slot in slots:
             if isinstance(slot, SlotValue) and slot.name == "date_range":
-                period_map = {
-                    "today": "今日",
-                    "yesterday": "昨日",
-                    "this_week": "今週",
-                    "last_week": "先週",
-                    "this_month": "今月",
-                    "last_month": "先月",
-                }
-                period_label = period_map.get(slot.value, "今日")
+                period_key = slot.value
+            elif isinstance(slot, SlotValue) and slot.name == "product_name":
+                product_name = slot.value
 
-        # 売上データの取得（MVPではモックデータ、実際にはDB経由）
+        period_label = _PERIOD_MAP.get(period_key, "今日")
+        from_dt, to_dt = _resolve_period(period_key)
+
+        total_amount = 0
+        item_count = 0
+
+        if self._repository is not None:
+            try:
+                if product_name is not None:
+                    result = self._repository.product_sales_between(
+                        product_name, from_dt, to_dt,
+                    )
+                else:
+                    result = self._repository.total_sales_between(from_dt, to_dt)
+                total_amount = result.total_amount
+                item_count = result.item_count
+            except Exception:
+                logger.exception("売上データ取得エラー")
+
         sales_data = SalesData(
-            total_amount=0,
+            total_amount=total_amount,
             period_label=period_label,
-            item_count=0,
+            item_count=item_count,
         )
 
         response_text = generate_sales_response(sales_data)
@@ -261,9 +329,18 @@ class QueryServiceServicer(query_service_pb2_grpc.QueryServiceServicer):
                 response_text=generate_error_response("product_not_found"),
             )
 
+        stock_quantity = 0
+        if self._repository is not None:
+            try:
+                inv_result = self._repository.find_stock_by_product_name(product_name)
+                if inv_result is not None:
+                    stock_quantity = inv_result.stock_quantity
+            except Exception:
+                logger.exception("在庫データ取得エラー")
+
         inventory_data = InventoryData(
             product_name=product_name,
-            stock_quantity=0,
+            stock_quantity=stock_quantity,
         )
 
         response_text = generate_inventory_response(inventory_data)
@@ -292,31 +369,41 @@ class QueryServiceServicer(query_service_pb2_grpc.QueryServiceServicer):
             クエリ結果
         """
         from pos_voice_concierge.intent_classifier import SlotValue  # noqa: PLC0415
-        from pos_voice_concierge.response_generator import TopProductEntry  # noqa: PLC0415
+        from pos_voice_concierge.response_generator import (  # noqa: PLC0415
+            TopProductEntry as ResponseTopProductEntry,
+        )
 
-        period_label = "今日"
+        period_key = "today"
         requested_n = 5
 
         for slot in slots:
             if not isinstance(slot, SlotValue):
                 continue
             if slot.name == "date_range":
-                period_map = {
-                    "today": "今日",
-                    "yesterday": "昨日",
-                    "this_week": "今週",
-                    "last_week": "先週",
-                    "this_month": "今月",
-                    "last_month": "先月",
-                }
-                period_label = period_map.get(slot.value, "今日")
+                period_key = slot.value
             elif slot.name == "top_n":
                 requested_n = int(slot.value)
 
-        # MVPではデータなし（Backend が実際のデータを注入する）
-        entries: list[TopProductEntry] = []
-        # requested_n は将来 DB クエリの LIMIT に使用される
-        entries = entries[:requested_n]
+        period_label = _PERIOD_MAP.get(period_key, "今日")
+        from_dt, to_dt = _resolve_period(period_key)
+
+        entries: list[ResponseTopProductEntry] = []
+        if self._repository is not None:
+            try:
+                db_entries = self._repository.top_products_between(
+                    from_dt, to_dt, requested_n,
+                )
+                entries = [
+                    ResponseTopProductEntry(
+                        rank=e.rank,
+                        product_name=e.product_name,
+                        total_amount=e.total_amount,
+                        quantity_sold=e.quantity_sold,
+                    )
+                    for e in db_entries
+                ]
+            except Exception:
+                logger.exception("トップ商品データ取得エラー")
 
         response_text = generate_top_products_response(entries, period_label)
 
