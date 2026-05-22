@@ -22,7 +22,7 @@ dependencies {
     implementation("io.quarkus:quarkus-grpc")
     implementation("io.quarkus:quarkus-websockets")
     implementation("io.quarkus:quarkus-security")
-    implementation("com.google.protobuf:protobuf-kotlin:4.34.1")
+    implementation("com.google.protobuf:protobuf-kotlin:4.35.0")
     implementation("io.quarkus:quarkus-jdbc-postgresql")
     implementation("io.quarkus:quarkus-hibernate-orm-panache-kotlin")
     implementation("io.quarkus:quarkus-flyway")
