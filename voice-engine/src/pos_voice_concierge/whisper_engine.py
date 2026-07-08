@@ -8,7 +8,8 @@ from __future__ import annotations
 import io
 import logging
 import os
-from typing import TYPE_CHECKING, Protocol
+import wave
+from typing import TYPE_CHECKING, Any, Protocol
 
 import numpy as np
 
@@ -107,7 +108,8 @@ class WhisperEngine:
             model_name: Whisper モデル名 ("tiny", "base", "small", "medium", "large")
         """
         self._model_name = model_name
-        self._model = None
+        # whisper.load_model が返すモデルオブジェクトは型スタブが無いため Any 扱い
+        self._model: Any = None
 
     def _ensure_model_loaded(self) -> None:
         """モデルがロードされていなければロードする."""
@@ -154,7 +156,7 @@ class WhisperEngine:
                 confidence=avg_confidence,
                 language="ja",
             )
-        except Exception as e:
+        except (wave.Error, EOFError, ValueError, RuntimeError, OSError, MemoryError) as e:
             msg = f"音声認識に失敗しました: {e}"
             raise TranscriptionError(msg) from e
 
@@ -168,8 +170,6 @@ class WhisperEngine:
         Returns:
             float32 の numpy 配列 (-1.0 ~ 1.0)
         """
-        import wave  # noqa: PLC0415
-
         buffer = io.BytesIO(wav_data)
         with wave.open(buffer, "rb") as wf:
             frames = wf.readframes(wf.getnframes())

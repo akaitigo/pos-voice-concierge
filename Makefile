@@ -26,7 +26,7 @@ test-voice:
 	cd voice-engine && $(CURDIR)/$(VOICE_VENV)/pytest
 
 lint-voice:
-	cd voice-engine && $(CURDIR)/$(VOICE_VENV)/ruff check .
+	cd voice-engine && $(CURDIR)/$(VOICE_VENV)/ruff check . && $(CURDIR)/$(VOICE_VENV)/mypy
 
 format-voice:
 	cd voice-engine && $(CURDIR)/$(VOICE_VENV)/ruff format . && $(CURDIR)/$(VOICE_VENV)/ruff check --fix .

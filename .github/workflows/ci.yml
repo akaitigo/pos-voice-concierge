@@ -49,6 +49,10 @@ jobs:
         working-directory: voice-engine
         run: .venv/bin/ruff check .
 
+      - name: Type check
+        working-directory: voice-engine
+        run: .venv/bin/mypy
+
       - name: Test
         working-directory: voice-engine
         run: .venv/bin/pytest
