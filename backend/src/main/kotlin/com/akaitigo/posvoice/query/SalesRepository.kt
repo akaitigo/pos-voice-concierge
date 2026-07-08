@@ -3,6 +3,7 @@ package com.akaitigo.posvoice.query
 import io.quarkus.hibernate.orm.panache.kotlin.PanacheRepositoryBase
 import jakarta.enterprise.context.ApplicationScoped
 import jakarta.persistence.EntityManager
+import jakarta.persistence.Tuple
 import jakarta.inject.Inject
 import java.time.OffsetDateTime
 
@@ -35,13 +36,15 @@ class SalesRepository : PanacheRepositoryBase<SalesEntity, Long> {
 
     /**
      * 指定期間の商品別売上トップNを取得する.
+     *
+     * 型安全な [Tuple] クエリを使用し、非チェックキャストを排除する。
+     * 集計値は DB 実装差（Long/BigInteger 等）を吸収するため [Number] として取り出す。
      */
     fun topProductsBetween(
         from: OffsetDateTime,
         to: OffsetDateTime,
         limit: Int,
     ): List<TopProductResult> {
-        @Suppress("UNCHECKED_CAST")
         val results = em.createQuery(
             """
             SELECT p.name, SUM(s.totalPrice), SUM(s.quantity)
@@ -50,18 +53,19 @@ class SalesRepository : PanacheRepositoryBase<SalesEntity, Long> {
             GROUP BY p.name
             ORDER BY SUM(s.totalPrice) DESC
             """.trimIndent(),
+            Tuple::class.java,
         )
             .setParameter("from", from)
             .setParameter("to", to)
             .setMaxResults(limit)
-            .resultList as List<Array<Any>>
+            .resultList
 
-        return results.mapIndexed { index, row ->
+        return results.mapIndexed { index, tuple ->
             TopProductResult(
                 rank = index + 1,
-                productName = row[0] as String,
-                totalAmount = (row[1] as Number).toLong(),
-                quantitySold = (row[2] as Number).toInt(),
+                productName = tuple.get(0, String::class.java),
+                totalAmount = tuple.get(1, Number::class.java).toLong(),
+                quantitySold = tuple.get(2, Number::class.java).toInt(),
             )
         }
     }
@@ -87,6 +91,28 @@ class SalesRepository : PanacheRepositoryBase<SalesEntity, Long> {
             .setParameter("to", to)
             .singleResult
         return result ?: 0L
+    }
+
+    /**
+     * 指定商品の期間別売上件数（取引数）を取得する.
+     */
+    fun countProductSalesBetween(
+        productName: String,
+        from: OffsetDateTime,
+        to: OffsetDateTime,
+    ): Long {
+        return em.createQuery(
+            """
+            SELECT COUNT(s)
+            FROM SalesEntity s JOIN ProductEntity p ON s.productId = p.id
+            WHERE p.name = :name AND s.soldAt >= :from AND s.soldAt < :to
+            """.trimIndent(),
+            Long::class.java,
+        )
+            .setParameter("name", productName)
+            .setParameter("from", from)
+            .setParameter("to", to)
+            .singleResult
     }
 }
 

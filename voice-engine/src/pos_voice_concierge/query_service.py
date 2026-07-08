@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo
@@ -105,6 +106,90 @@ def _resolve_period(period_key: str) -> tuple[datetime, datetime]:
         to_dt = today + timedelta(days=1)
 
     return (from_dt.astimezone(UTC), to_dt.astimezone(UTC))
+
+
+# 明示的な期間指定スロット（"M/D" 形式）
+_EXPLICIT_DATE_RE = re.compile(r"^(\d{1,2})/(\d{1,2})$")
+# 日付表現（商品名として誤抽出された期間テキストの判定用）。
+# 「からあげ」等の誤検出を避けるため、数字+月/日 のみを対象とする。
+_DATE_EXPRESSION_RE = re.compile(r"\d+月|\d+日")
+
+
+def _resolve_explicit_range(
+    start_value: str,
+    end_value: str,
+) -> tuple[datetime, datetime, str] | None:
+    """明示的な期間指定（"M/D" 形式）を UTC の (from, to, label) に変換する.
+
+    年は現在の JST 年を使用する。end_value は当日を含めるため終端を +1 日する。
+
+    Args:
+        start_value: 開始日（"M/D"）
+        end_value: 終了日（"M/D"）
+
+    Returns:
+        (from_dt, to_dt, label)。パース不能または from >= to の場合は None。
+    """
+    start_match = _EXPLICIT_DATE_RE.match(start_value)
+    end_match = _EXPLICIT_DATE_RE.match(end_value)
+    if start_match is None or end_match is None:
+        return None
+
+    year = datetime.now(tz=_JST).year
+    try:
+        from_dt = datetime(year, int(start_match.group(1)), int(start_match.group(2)), tzinfo=_JST)
+        end_day = datetime(year, int(end_match.group(1)), int(end_match.group(2)), tzinfo=_JST)
+    except ValueError:
+        return None
+
+    to_dt = end_day + timedelta(days=1)
+    if from_dt >= to_dt:
+        return None
+
+    label = f"{start_value}〜{end_value}"
+    return (from_dt.astimezone(UTC), to_dt.astimezone(UTC), label)
+
+
+def _resolve_range_from_slots(
+    period_key: str,
+    start_date: str | None,
+    end_date: str | None,
+) -> tuple[datetime, datetime, str]:
+    """スロットから (from, to, label) を解決する.
+
+    明示的な期間指定（start_date/end_date）が有効ならそれを優先し、
+    無ければ期間キー（today/last_month 等）から解決する。
+
+    Args:
+        period_key: 期間キー
+        start_date: 明示的な開始日（"M/D"）または None
+        end_date: 明示的な終了日（"M/D"）または None
+
+    Returns:
+        (from_dt, to_dt, label)
+    """
+    if start_date is not None and end_date is not None:
+        explicit = _resolve_explicit_range(start_date, end_date)
+        if explicit is not None:
+            return explicit
+
+    period_label = _PERIOD_MAP.get(period_key, "今日")
+    from_dt, to_dt = _resolve_period(period_key)
+    return (from_dt, to_dt, period_label)
+
+
+def _looks_like_date_expression(text: str) -> bool:
+    """テキストが日付表現（「3月」「15日」「から」）を含むかどうかを返す.
+
+    明示的な期間指定時に、日付レンジが商品名として誤抽出された場合の除外に使う。
+
+    Args:
+        text: 判定対象テキスト
+
+    Returns:
+        日付表現を含む場合 True
+    """
+    return _DATE_EXPRESSION_RE.search(text) is not None
 
 
 class QueryServiceServicer(query_service_pb2_grpc.QueryServiceServicer):
@@ -290,14 +375,30 @@ class QueryServiceServicer(query_service_pb2_grpc.QueryServiceServicer):
 
         period_key = "today"
         product_name: str | None = None
+        start_date: str | None = None
+        end_date: str | None = None
         for slot in slots:
-            if isinstance(slot, SlotValue) and slot.name == "date_range":
+            if not isinstance(slot, SlotValue):
+                continue
+            if slot.name == "date_range":
                 period_key = slot.value
-            elif isinstance(slot, SlotValue) and slot.name == "product_name":
+            elif slot.name == "product_name":
                 product_name = slot.value
+            elif slot.name == "start_date":
+                start_date = slot.value
+            elif slot.name == "end_date":
+                end_date = slot.value
 
-        period_label = _PERIOD_MAP.get(period_key, "今日")
-        from_dt, to_dt = _resolve_period(period_key)
+        from_dt, to_dt, period_label = _resolve_range_from_slots(period_key, start_date, end_date)
+
+        # 明示的な期間指定時、日付レンジが商品名として誤抽出された場合は無視する
+        if (
+            start_date is not None
+            and end_date is not None
+            and product_name is not None
+            and _looks_like_date_expression(product_name)
+        ):
+            product_name = None
 
         total_amount = 0
         item_count = 0
@@ -409,6 +510,8 @@ class QueryServiceServicer(query_service_pb2_grpc.QueryServiceServicer):
 
         period_key = "today"
         requested_n = _DEFAULT_TOP_N
+        start_date: str | None = None
+        end_date: str | None = None
 
         for slot in slots:
             if not isinstance(slot, SlotValue):
@@ -417,9 +520,12 @@ class QueryServiceServicer(query_service_pb2_grpc.QueryServiceServicer):
                 period_key = slot.value
             elif slot.name == "top_n":
                 requested_n = _parse_top_n(slot.value)
+            elif slot.name == "start_date":
+                start_date = slot.value
+            elif slot.name == "end_date":
+                end_date = slot.value
 
-        period_label = _PERIOD_MAP.get(period_key, "今日")
-        from_dt, to_dt = _resolve_period(period_key)
+        from_dt, to_dt, period_label = _resolve_range_from_slots(period_key, start_date, end_date)
 
         entries: list[ResponseTopProductEntry] = []
         if self._repository is not None:

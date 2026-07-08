@@ -7,11 +7,63 @@ from __future__ import annotations
 
 import io
 import logging
-from typing import Protocol
+import os
+from typing import TYPE_CHECKING, Protocol
 
 import numpy as np
 
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
 logger = logging.getLogger(__name__)
+
+DEFAULT_WHISPER_MODEL = "base"
+
+# Whisper が提供する既知のモデル名（tiny〜large と turbo、英語専用 .en 系を含む）
+KNOWN_WHISPER_MODELS: frozenset[str] = frozenset(
+    {
+        "tiny",
+        "tiny.en",
+        "base",
+        "base.en",
+        "small",
+        "small.en",
+        "medium",
+        "medium.en",
+        "large",
+        "large-v1",
+        "large-v2",
+        "large-v3",
+        "turbo",
+    },
+)
+
+
+def resolve_model_name(env: Mapping[str, str] | None = None) -> str:
+    """環境変数 WHISPER_MODEL から使用する Whisper モデル名を解決する.
+
+    未設定時は既定（base）。既知のモデル名でない場合は警告を出し既定に戻す。
+    これによりタイプミス等の不正なモデル名でモデルロードが失敗する前に検知できる。
+
+    Args:
+        env: 環境変数マッピング（省略時は os.environ）
+
+    Returns:
+        使用する Whisper モデル名
+    """
+    source = os.environ if env is None else env
+    raw = source.get("WHISPER_MODEL", DEFAULT_WHISPER_MODEL).strip()
+    if not raw:
+        return DEFAULT_WHISPER_MODEL
+    if raw not in KNOWN_WHISPER_MODELS:
+        logger.warning(
+            "未知の WHISPER_MODEL '%s' が指定されました。既定の '%s' を使用します。許容値: %s",
+            raw,
+            DEFAULT_WHISPER_MODEL,
+            ", ".join(sorted(KNOWN_WHISPER_MODELS)),
+        )
+        return DEFAULT_WHISPER_MODEL
+    return raw
 
 
 class TranscriptionEngine(Protocol):
