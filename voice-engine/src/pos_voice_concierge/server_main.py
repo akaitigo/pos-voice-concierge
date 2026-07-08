@@ -10,7 +10,7 @@ from threading import Event
 
 from pos_voice_concierge.fuzzy_matcher import FuzzyMatcher
 from pos_voice_concierge.grpc_server import DEFAULT_PORT, create_server
-from pos_voice_concierge.whisper_engine import WhisperEngine
+from pos_voice_concierge.whisper_engine import WhisperEngine, resolve_model_name
 
 logging.basicConfig(
     level=logging.INFO,
@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 def main() -> None:
     """サーバーを起動する."""
     port = int(os.environ.get("VOICE_ENGINE_PORT", str(DEFAULT_PORT)))
-    model_name = os.environ.get("WHISPER_MODEL", "base")
+    model_name = resolve_model_name()
 
     engine = WhisperEngine(model_name=model_name)
     matcher = FuzzyMatcher(threshold=80.0)

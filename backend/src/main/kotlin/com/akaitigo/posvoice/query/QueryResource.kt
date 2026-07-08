@@ -62,11 +62,12 @@ class QueryResource {
 
         if (product != null) {
             val amount = salesRepository.productSalesBetween(product, from, to)
+            val itemCount = salesRepository.countProductSalesBetween(product, from, to)
             return Response.ok(
                 SalesResponse(
                     totalAmount = amount,
                     periodLabel = label,
-                    itemCount = 0,
+                    itemCount = itemCount.toInt(),
                     productName = product,
                 ),
             ).build()

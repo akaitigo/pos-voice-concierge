@@ -8,7 +8,12 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 
 from pos_voice_concierge.audio_converter import create_wav_from_pcm
-from pos_voice_concierge.whisper_engine import TranscriptionResult, WhisperEngine
+from pos_voice_concierge.whisper_engine import (
+    DEFAULT_WHISPER_MODEL,
+    TranscriptionResult,
+    WhisperEngine,
+    resolve_model_name,
+)
 
 
 class TestWhisperEngine:
@@ -64,6 +69,28 @@ class TestWhisperEngine:
     def test_calculate_average_confidence_empty(self) -> None:
         confidence = WhisperEngine._calculate_average_confidence([])
         assert confidence == 0.0
+
+
+class TestResolveModelName:
+    """WHISPER_MODEL 環境変数からのモデル名解決（#34）."""
+
+    def test_default_when_unset(self):
+        assert resolve_model_name({}) == "base"
+
+    def test_reads_env_value(self):
+        assert resolve_model_name({"WHISPER_MODEL": "small"}) == "small"
+
+    def test_accepts_versioned_large(self):
+        assert resolve_model_name({"WHISPER_MODEL": "large-v3"}) == "large-v3"
+
+    def test_strips_whitespace(self):
+        assert resolve_model_name({"WHISPER_MODEL": "  medium  "}) == "medium"
+
+    def test_unknown_falls_back_to_default(self):
+        assert resolve_model_name({"WHISPER_MODEL": "gigantic"}) == DEFAULT_WHISPER_MODEL
+
+    def test_empty_falls_back_to_default(self):
+        assert resolve_model_name({"WHISPER_MODEL": "   "}) == "base"
 
 
 def _create_test_wav(

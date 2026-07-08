@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from unittest.mock import MagicMock
+from zoneinfo import ZoneInfo
 
 import grpc  # noqa: TC002
 import pytest
@@ -17,7 +19,14 @@ from pos_voice_concierge.product_repository import (
 from pos_voice_concierge.product_repository import (
     TopProductEntry as RepoTopProductEntry,
 )
-from pos_voice_concierge.query_service import QueryServiceServicer, _parse_top_n
+from pos_voice_concierge.query_service import (
+    QueryServiceServicer,
+    _looks_like_date_expression,
+    _parse_top_n,
+    _resolve_explicit_range,
+)
+
+_JST = ZoneInfo("Asia/Tokyo")
 
 
 class FakeServicerContext:
@@ -446,3 +455,77 @@ class TestE2EQueryFlow:
         assert response.intent == "inventory_inquiry"
         assert response.data.HasField("inventory")
         assert response.data.inventory.stock_quantity == 24
+
+
+class TestResolveExplicitRange:
+    """明示的な期間指定パーサーの単体テスト（#27）."""
+
+    def test_valid_range(self):
+        result = _resolve_explicit_range("3/15", "3/20")
+        assert result is not None
+        _, _, label = result
+        assert label == "3/15〜3/20"
+
+    def test_end_is_inclusive(self):
+        result = _resolve_explicit_range("3/15", "3/20")
+        assert result is not None
+        from_dt, to_dt, _ = result
+        year = datetime.now(tz=_JST).year
+        assert from_dt == datetime(year, 3, 15, tzinfo=_JST).astimezone(UTC)
+        # 終了日を含めるため 3/21 00:00 が排他的終端
+        assert to_dt == datetime(year, 3, 21, tzinfo=_JST).astimezone(UTC)
+
+    def test_invalid_format_returns_none(self):
+        assert _resolve_explicit_range("march", "20") is None
+
+    def test_reversed_range_returns_none(self):
+        assert _resolve_explicit_range("3/20", "3/15") is None
+
+    def test_invalid_calendar_date_returns_none(self):
+        assert _resolve_explicit_range("13/40", "13/41") is None
+
+    def test_looks_like_date_expression(self):
+        assert _looks_like_date_expression("3月15日から3月20日") is True
+        assert _looks_like_date_expression("からあげクン") is False
+        assert _looks_like_date_expression("コーラ") is False
+
+
+class TestExplicitDateRangeHandling:
+    """query_service が start_date/end_date スロットを反映することの検証（#27）."""
+
+    def test_sales_inquiry_applies_explicit_range(
+        self,
+        servicer_with_repo,
+        context,
+        mock_repository,
+    ):
+        request = query_service_pb2.QueryRequest(text="3月15日から3月20日の売上は？")
+        response = servicer_with_repo.ExecuteQuery(request, context)
+
+        assert response.intent == "sales_inquiry"
+        # 期間レンジ指定時は商品指定なしの total_sales_between が呼ばれる
+        mock_repository.total_sales_between.assert_called_once()
+        mock_repository.product_sales_between.assert_not_called()
+
+        from_dt, to_dt = mock_repository.total_sales_between.call_args.args
+        year = datetime.now(tz=_JST).year
+        assert from_dt == datetime(year, 3, 15, tzinfo=_JST).astimezone(UTC)
+        assert to_dt == datetime(year, 3, 21, tzinfo=_JST).astimezone(UTC)
+        assert response.data.sales.period_label == "3/15〜3/20"
+
+    def test_top_products_applies_explicit_range(
+        self,
+        servicer_with_repo,
+        context,
+        mock_repository,
+    ):
+        request = query_service_pb2.QueryRequest(text="3月15日から3月20日の売上トップ3は？")
+        response = servicer_with_repo.ExecuteQuery(request, context)
+
+        assert response.intent == "top_products"
+        from_dt, to_dt, limit = mock_repository.top_products_between.call_args.args
+        year = datetime.now(tz=_JST).year
+        assert from_dt == datetime(year, 3, 15, tzinfo=_JST).astimezone(UTC)
+        assert to_dt == datetime(year, 3, 21, tzinfo=_JST).astimezone(UTC)
+        assert limit == 3
+        assert response.data.top_products.period_label == "3/15〜3/20"
