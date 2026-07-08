@@ -27,7 +27,10 @@ describe("useTts", () => {
 
 		vi.stubGlobal(
 			"SpeechSynthesisUtterance",
-			vi.fn(() => mockUtterance),
+			// biome-ignore lint/complexity/useArrowFunction: new SpeechSynthesisUtterance() で構築されるモックのため通常の関数式が必要（アロー関数はコンストラクタ不可）
+			vi.fn(function () {
+				return mockUtterance;
+			}),
 		);
 
 		Object.defineProperty(window, "speechSynthesis", {

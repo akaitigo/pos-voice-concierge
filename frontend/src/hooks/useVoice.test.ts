@@ -65,7 +65,10 @@ describe("useVoice", () => {
 		vi.stubGlobal(
 			"WebSocket",
 			Object.assign(
-				vi.fn(() => mockWs),
+				// biome-ignore lint/complexity/useArrowFunction: new WebSocket() で構築されるモックのため通常の関数式が必要（アロー関数はコンストラクタ不可）
+				vi.fn(function () {
+					return mockWs;
+				}),
 				{
 					CONNECTING: 0,
 					OPEN: 1,
