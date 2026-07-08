@@ -5,10 +5,13 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo
+
+import psycopg
 
 from pos_voice_concierge.generated import query_service_pb2, query_service_pb2_grpc
 from pos_voice_concierge.intent_classifier import Intent, classify
@@ -37,6 +40,29 @@ _PERIOD_MAP: dict[str, str] = {
     "this_month": "今月",
     "last_month": "先月",
 }
+
+# トップN件数の有効範囲。負数・ゼロ・過大値がそのまま DB の LIMIT に渡るのを防ぐ。
+_DEFAULT_TOP_N = 5
+_MIN_TOP_N = 1
+_MAX_TOP_N = 100
+
+
+def _parse_top_n(value: str) -> int:
+    """top_n スロット文字列を有効範囲 [1, 100] のトップN件数に変換する.
+
+    数値化できない値はデフォルト（5）にフォールバックする。
+
+    Args:
+        value: top_n スロットの文字列表現
+
+    Returns:
+        1〜100 に丸めたトップN件数
+    """
+    try:
+        parsed = int(value)
+    except (ValueError, TypeError):
+        return _DEFAULT_TOP_N
+    return max(_MIN_TOP_N, min(parsed, _MAX_TOP_N))
 
 
 def _resolve_period(period_key: str) -> tuple[datetime, datetime]:
@@ -199,8 +225,6 @@ class QueryServiceServicer(query_service_pb2_grpc.QueryServiceServicer):
         else:
             json_data = self._matcher.export_aliases_json()
 
-        import json  # noqa: PLC0415
-
         count = len(json.loads(json_data))
 
         return query_service_pb2.ExportAliasesResponse(
@@ -233,12 +257,20 @@ class QueryServiceServicer(query_service_pb2_grpc.QueryServiceServicer):
                 success=True,
                 message=f"{imported}件のエイリアスをインポートしました。",
             )
-        except Exception as e:
-            logger.exception("辞書インポートエラー")
+        except (json.JSONDecodeError, KeyError, TypeError, ValueError):
+            # 詳細（内部構造・入力内容）はクライアントに返さず、サーバーログにのみ記録する。
+            logger.exception("辞書インポートエラー: 入力データが不正")
             return query_service_pb2.ImportAliasesResponse(
                 imported_count=0,
                 success=False,
-                message=f"インポートに失敗しました: {e}",
+                message="インポートに失敗しました。入力データの形式を確認してください。",
+            )
+        except psycopg.Error:
+            logger.exception("辞書インポートエラー: データベース処理に失敗")
+            return query_service_pb2.ImportAliasesResponse(
+                imported_count=0,
+                success=False,
+                message="インポートに失敗しました。しばらくしてから再度お試しください。",
             )
 
     def _handle_sales_inquiry(
@@ -376,7 +408,7 @@ class QueryServiceServicer(query_service_pb2_grpc.QueryServiceServicer):
         )
 
         period_key = "today"
-        requested_n = 5
+        requested_n = _DEFAULT_TOP_N
 
         for slot in slots:
             if not isinstance(slot, SlotValue):
@@ -384,7 +416,7 @@ class QueryServiceServicer(query_service_pb2_grpc.QueryServiceServicer):
             if slot.name == "date_range":
                 period_key = slot.value
             elif slot.name == "top_n":
-                requested_n = int(slot.value)
+                requested_n = _parse_top_n(slot.value)
 
         period_label = _PERIOD_MAP.get(period_key, "今日")
         from_dt, to_dt = _resolve_period(period_key)

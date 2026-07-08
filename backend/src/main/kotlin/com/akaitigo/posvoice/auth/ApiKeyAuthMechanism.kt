@@ -23,6 +23,37 @@ class ApiKeyAuthMechanism : HttpAuthenticationMechanism {
         private const val BEARER_PREFIX = "Bearer "
         private const val AUTHORIZATION_HEADER = "Authorization"
         private const val UNAUTHORIZED_STATUS = 401
+        private const val ACCESS_TOKEN_PARAM = "access_token"
+        private const val WS_PATH_PREFIX = "/ws/"
+
+        /**
+         * リクエストからAPIキーを解決する.
+         *
+         * 優先順位:
+         * 1. 全パス共通で `Authorization: Bearer <key>` ヘッダー。
+         * 2. WebSocket パス（/ws/ 配下）に限り `access_token` クエリパラメータ。
+         *    ブラウザの WebSocket ハンドシェイクは任意ヘッダーを設定できないため、
+         *    クエリパラメータをフォールバックとして許可する（設計判断は ADR-0003 参照）。
+         *
+         * @param authHeader Authorization ヘッダーの値
+         * @param path リクエストパス
+         * @param accessToken access_token クエリパラメータの値
+         * @return 解決したAPIキー。存在しない場合は null。
+         */
+        fun resolveApiKey(authHeader: String?, path: String?, accessToken: String?): String? {
+            val fromHeader = authHeader
+                ?.takeIf { it.startsWith(BEARER_PREFIX) }
+                ?.substring(BEARER_PREFIX.length)
+                ?.trim()
+                ?.ifEmpty { null }
+            val isWsPath = path != null && path.startsWith(WS_PATH_PREFIX)
+            val fromQuery = if (isWsPath) {
+                accessToken?.trim()?.ifEmpty { null }
+            } else {
+                null
+            }
+            return fromHeader ?: fromQuery
+        }
     }
 
     override fun authenticate(
@@ -44,11 +75,8 @@ class ApiKeyAuthMechanism : HttpAuthenticationMechanism {
 
     private fun extractApiKey(context: RoutingContext): String? {
         val authHeader: String? = context.request().getHeader(AUTHORIZATION_HEADER)
-        return authHeader
-            ?.takeIf { it.startsWith(BEARER_PREFIX) }
-            ?.substring(BEARER_PREFIX.length)
-            ?.trim()
-            ?.ifEmpty { null }
+        val accessToken: String? = context.request().getParam(ACCESS_TOKEN_PARAM)
+        return resolveApiKey(authHeader, context.normalizedPath(), accessToken)
     }
 
     override fun getCredentialTypes(): Set<Class<out AuthenticationRequest>> {

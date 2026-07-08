@@ -23,10 +23,31 @@ interface UseVoiceOptions {
 	readonly wsUrl?: string;
 	/** 音声チャンクの送信間隔 (ms) */
 	readonly chunkIntervalMs?: number;
+	/**
+	 * WebSocket 認証用 API キー。
+	 * ブラウザの WebSocket ハンドシェイクは Authorization ヘッダーを設定できないため、
+	 * access_token クエリパラメータとして送信する（デフォルトは VITE_POS_VOICE_API_KEY）。
+	 */
+	readonly apiKey?: string;
 }
 
 const DEFAULT_WS_URL = "ws://localhost:8080/ws/voice";
 const DEFAULT_CHUNK_INTERVAL_MS = 250;
+
+/** ビルド時に注入される API キーを取得する（未設定なら空文字列） */
+function getConfiguredApiKey(): string {
+	const key = import.meta.env.VITE_POS_VOICE_API_KEY;
+	return typeof key === "string" ? key : "";
+}
+
+/** WebSocket URL に access_token クエリパラメータを付与する（apiKey が空なら変更しない） */
+function buildWsUrl(baseUrl: string, apiKey: string): string {
+	if (!apiKey) {
+		return baseUrl;
+	}
+	const separator = baseUrl.includes("?") ? "&" : "?";
+	return `${baseUrl}${separator}access_token=${encodeURIComponent(apiKey)}`;
+}
 
 /**
  * 音声入力・WebSocket送信・認識結果受信を管理するフック.
@@ -37,7 +58,11 @@ const DEFAULT_CHUNK_INTERVAL_MS = 250;
  * 音声データはメモリ上のストリーム処理のみで、ファイル保存しない。
  */
 export function useVoice(options: UseVoiceOptions = {}): UseVoiceReturn {
-	const { wsUrl = DEFAULT_WS_URL, chunkIntervalMs = DEFAULT_CHUNK_INTERVAL_MS } = options;
+	const {
+		wsUrl = DEFAULT_WS_URL,
+		chunkIntervalMs = DEFAULT_CHUNK_INTERVAL_MS,
+		apiKey = getConfiguredApiKey(),
+	} = options;
 
 	const [state, setState] = useState<VoiceState>("idle");
 	const [result, setResult] = useState<RecognitionResult | null>(null);
@@ -95,7 +120,7 @@ export function useVoice(options: UseVoiceOptions = {}): UseVoiceReturn {
 			});
 			streamRef.current = mediaStream;
 
-			const ws = new WebSocket(wsUrl);
+			const ws = new WebSocket(buildWsUrl(wsUrl, apiKey));
 			ws.binaryType = "arraybuffer";
 			wsRef.current = ws;
 
@@ -152,7 +177,7 @@ export function useVoice(options: UseVoiceOptions = {}): UseVoiceReturn {
 			setState("error");
 			cleanup();
 		}
-	}, [wsUrl, chunkIntervalMs, cleanup, state]);
+	}, [wsUrl, apiKey, chunkIntervalMs, cleanup, state]);
 
 	const stopListening = useCallback(() => {
 		cleanup();

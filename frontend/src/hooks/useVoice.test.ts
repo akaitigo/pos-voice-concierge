@@ -187,4 +187,24 @@ describe("useVoice", () => {
 		expect(result.current.state).toBe("error");
 		expect(result.current.error).toBe("WebSocket接続エラーが発生しました");
 	});
+
+	it("appends access_token query param to the WebSocket URL when apiKey is provided", async () => {
+		const { result } = renderHook(() => useVoice({ apiKey: "secret-key" }));
+
+		await act(async () => {
+			await result.current.startListening();
+		});
+
+		expect(WebSocket).toHaveBeenCalledWith(expect.stringContaining("access_token=secret-key"));
+	});
+
+	it("does not append access_token to the WebSocket URL when apiKey is empty", async () => {
+		const { result } = renderHook(() => useVoice({ apiKey: "" }));
+
+		await act(async () => {
+			await result.current.startListening();
+		});
+
+		expect(WebSocket).toHaveBeenCalledWith("ws://localhost:8080/ws/voice");
+	});
 });
