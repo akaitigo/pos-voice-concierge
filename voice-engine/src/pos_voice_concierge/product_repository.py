@@ -16,6 +16,44 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _as_int(value: object) -> int:
+    """DB カーソルから得た値（型は object）を int に変換する.
+
+    Args:
+        value: DB 行の値
+
+    Returns:
+        整数値
+
+    Raises:
+        TypeError: int に変換できない型の場合。
+    """
+    if isinstance(value, int):
+        return value
+    if isinstance(value, (str, float)):
+        return int(value)
+    msg = f"cannot convert {type(value).__name__} to int"
+    raise TypeError(msg)
+
+
+def _as_datetime(value: object) -> datetime:
+    """DB カーソルから得た値（型は object）を datetime に変換する.
+
+    Args:
+        value: DB 行の値
+
+    Returns:
+        datetime 値
+
+    Raises:
+        TypeError: datetime でない場合。
+    """
+    if isinstance(value, datetime):
+        return value
+    msg = f"expected datetime, got {type(value).__name__}"
+    raise TypeError(msg)
+
+
 @dataclass(frozen=True)
 class Product:
     """商品マスタエンティティ."""
@@ -86,7 +124,7 @@ class ProductRepository:
         with self._conn.cursor() as cur:
             cur.execute("SELECT id, name, barcode, price FROM products ORDER BY name")
             return [
-                Product(id=str(row[0]), name=str(row[1]), barcode=str(row[2]), price=int(row[3]))  # type: ignore[arg-type]
+                Product(id=str(row[0]), name=str(row[1]), barcode=str(row[2]), price=_as_int(row[3]))
                 for row in cur.fetchall()
             ]
 
@@ -107,7 +145,7 @@ class ProductRepository:
             row = cur.fetchone()
             if row is None:
                 return None
-            return Product(id=str(row[0]), name=str(row[1]), barcode=str(row[2]), price=int(row[3]))  # type: ignore[arg-type]
+            return Product(id=str(row[0]), name=str(row[1]), barcode=str(row[2]), price=_as_int(row[3]))
 
     def find_all_aliases(self) -> list[Alias]:
         """全表記ゆれエントリを取得する.
@@ -118,7 +156,7 @@ class ProductRepository:
         with self._conn.cursor() as cur:
             cur.execute("SELECT alias, product_name, created_at FROM aliases ORDER BY alias")
             return [
-                Alias(alias=str(row[0]), product_name=str(row[1]), created_at=row[2])  # type: ignore[arg-type]
+                Alias(alias=str(row[0]), product_name=str(row[1]), created_at=_as_datetime(row[2]))
                 for row in cur.fetchall()
             ]
 
@@ -246,8 +284,8 @@ class ProductRepository:
             if row is None:
                 return SalesResult(total_amount=0, item_count=0, period_label="")
             return SalesResult(
-                total_amount=int(row[0]),
-                item_count=int(row[1]),
+                total_amount=_as_int(row[0]),
+                item_count=_as_int(row[1]),
                 period_label="",
             )
 
@@ -281,8 +319,8 @@ class ProductRepository:
             if row is None:
                 return SalesResult(total_amount=0, item_count=0, period_label="")
             return SalesResult(
-                total_amount=int(row[0]),
-                item_count=int(row[1]),
+                total_amount=_as_int(row[0]),
+                item_count=_as_int(row[1]),
                 period_label="",
             )
 
@@ -310,7 +348,7 @@ class ProductRepository:
                 return None
             return InventoryResult(
                 product_name=str(row[0]),
-                stock_quantity=int(row[1]),
+                stock_quantity=_as_int(row[1]),
             )
 
     def top_products_between(
@@ -346,8 +384,8 @@ class ProductRepository:
                 TopProductEntry(
                     rank=idx + 1,
                     product_name=str(row[0]),
-                    total_amount=int(row[1]),
-                    quantity_sold=int(row[2]),
+                    total_amount=_as_int(row[1]),
+                    quantity_sold=_as_int(row[2]),
                 )
                 for idx, row in enumerate(cur.fetchall())
             ]

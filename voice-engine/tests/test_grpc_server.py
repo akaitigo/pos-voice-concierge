@@ -7,11 +7,11 @@ from unittest.mock import MagicMock
 
 import numpy as np
 
-from pos_voice_concierge.audio_converter import create_wav_from_pcm
+from pos_voice_concierge.audio_converter import AudioConversionError, create_wav_from_pcm
 from pos_voice_concierge.fuzzy_matcher import FuzzyMatcher
 from pos_voice_concierge.generated import voice_service_pb2
 from pos_voice_concierge.grpc_server import VoiceServiceServicer
-from pos_voice_concierge.whisper_engine import TranscriptionResult
+from pos_voice_concierge.whisper_engine import TranscriptionError, TranscriptionResult
 
 
 class MockTranscriptionEngine:
@@ -114,6 +114,90 @@ class TestVoiceServiceServicer:
 
         assert result.transcript == ""
         assert len(result.matches) == 0
+
+
+class FailingTranscriptionEngine:
+    """常に TranscriptionError を送出するモックエンジン."""
+
+    def transcribe(self, audio_data: bytes) -> TranscriptionResult:
+        msg = "model inference failed"
+        raise TranscriptionError(msg)
+
+    def is_loaded(self) -> bool:
+        return True
+
+
+class TestStreamRecognizeErrorPaths:
+    """StreamRecognize / Recognize のエラーパス（#32）."""
+
+    def setup_method(self) -> None:
+        self.matcher = FuzzyMatcher(threshold=70.0)
+        self.matcher.register_product("P001", "コカ・コーラ 500ml")
+        self.context = MagicMock()
+
+    def test_whisper_error_stream_yields_empty_final(self) -> None:
+        """Whisper がエラーでも空の最終結果を返しストリームを完結する."""
+        servicer = VoiceServiceServicer(FailingTranscriptionEngine(), self.matcher)
+        wav_data = _create_test_wav()
+        chunk = voice_service_pb2.AudioChunk(data=wav_data, format="wav", sample_rate=16000)
+
+        results = list(servicer.StreamRecognize(iter([chunk]), self.context))
+
+        assert len(results) >= 1
+        assert results[-1].is_final is True
+        assert results[-1].transcript == ""
+        assert len(results[-1].matches) == 0
+
+    def test_whisper_error_recognize_returns_empty(self) -> None:
+        """単発 Recognize も Whisper エラー時は空結果でフォールバックする."""
+        servicer = VoiceServiceServicer(FailingTranscriptionEngine(), self.matcher)
+        wav_data = _create_test_wav()
+        request = voice_service_pb2.AudioData(data=wav_data, format="wav", sample_rate=16000)
+
+        result = servicer.Recognize(request, self.context)
+
+        assert result.transcript == ""
+        assert result.is_final is True
+        assert len(result.matches) == 0
+
+    def test_audio_conversion_error_stream_yields_empty_final(self, monkeypatch) -> None:
+        """無効な音声フォーマット（変換失敗）でも空の最終結果を返す."""
+
+        def _raise_conversion_error(*_args: object, **_kwargs: object) -> bytes:
+            msg = "unsupported audio format"
+            raise AudioConversionError(msg)
+
+        monkeypatch.setattr(
+            "pos_voice_concierge.grpc_server.convert_to_wav",
+            _raise_conversion_error,
+        )
+        servicer = VoiceServiceServicer(MockTranscriptionEngine(), self.matcher)
+        chunk = voice_service_pb2.AudioChunk(data=b"\x00\x01\x02\x03", format="webm", sample_rate=16000)
+
+        results = list(servicer.StreamRecognize(iter([chunk]), self.context))
+
+        assert len(results) == 1
+        assert results[-1].is_final is True
+        assert results[-1].transcript == ""
+
+    def test_audio_conversion_error_recognize_returns_empty(self, monkeypatch) -> None:
+        """単発 Recognize も変換失敗時は空結果でフォールバックする."""
+
+        def _raise_conversion_error(*_args: object, **_kwargs: object) -> bytes:
+            msg = "unsupported audio format"
+            raise AudioConversionError(msg)
+
+        monkeypatch.setattr(
+            "pos_voice_concierge.grpc_server.convert_to_wav",
+            _raise_conversion_error,
+        )
+        servicer = VoiceServiceServicer(MockTranscriptionEngine(), self.matcher)
+        request = voice_service_pb2.AudioData(data=b"\x00\x01\x02\x03", format="webm", sample_rate=16000)
+
+        result = servicer.Recognize(request, self.context)
+
+        assert result.transcript == ""
+        assert result.is_final is True
 
 
 def _create_test_wav(

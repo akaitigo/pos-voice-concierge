@@ -8,6 +8,7 @@ from unittest.mock import MagicMock
 from zoneinfo import ZoneInfo
 
 import grpc  # noqa: TC002
+import psycopg
 import pytest
 
 from pos_voice_concierge.fuzzy_matcher import FuzzyMatcher
@@ -201,7 +202,7 @@ class TestExecuteQueryWithRepository:
     ):
         # インテント分類器が「今日」を商品名としても抽出するため、
         # product_sales_between のエラーハンドリングをテスト
-        mock_repository.product_sales_between.side_effect = RuntimeError("DB connection lost")
+        mock_repository.product_sales_between.side_effect = psycopg.OperationalError("DB connection lost")
         request = query_service_pb2.QueryRequest(text="今日の売上は？")
         response = servicer_with_repo.ExecuteQuery(request, context)
         assert response.intent == "sales_inquiry"
@@ -213,7 +214,7 @@ class TestExecuteQueryWithRepository:
         context,
         mock_repository,
     ):
-        mock_repository.find_stock_by_product_name.side_effect = RuntimeError("DB error")
+        mock_repository.find_stock_by_product_name.side_effect = psycopg.OperationalError("DB error")
         request = query_service_pb2.QueryRequest(text="コカコーラの在庫は？")
         response = servicer_with_repo.ExecuteQuery(request, context)
         assert response.intent == "inventory_inquiry"
@@ -225,7 +226,7 @@ class TestExecuteQueryWithRepository:
         context,
         mock_repository,
     ):
-        mock_repository.top_products_between.side_effect = RuntimeError("DB error")
+        mock_repository.top_products_between.side_effect = psycopg.OperationalError("DB error")
         request = query_service_pb2.QueryRequest(text="売上トップ5を教えて")
         response = servicer_with_repo.ExecuteQuery(request, context)
         assert response.intent == "top_products"

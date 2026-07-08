@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 import os
 import signal
-import sys
 from threading import Event
 
 from pos_voice_concierge.fuzzy_matcher import FuzzyMatcher
@@ -48,4 +47,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()

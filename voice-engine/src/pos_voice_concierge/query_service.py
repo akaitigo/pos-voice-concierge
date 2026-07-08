@@ -415,7 +415,7 @@ class QueryServiceServicer(query_service_pb2_grpc.QueryServiceServicer):
                     result = self._repository.total_sales_between(from_dt, to_dt)
                 total_amount = result.total_amount
                 item_count = result.item_count
-            except Exception:
+            except psycopg.Error:
                 logger.exception("売上データ取得エラー")
 
         sales_data = SalesData(
@@ -470,7 +470,7 @@ class QueryServiceServicer(query_service_pb2_grpc.QueryServiceServicer):
                 inv_result = self._repository.find_stock_by_product_name(product_name)
                 if inv_result is not None:
                     stock_quantity = inv_result.stock_quantity
-            except Exception:
+            except psycopg.Error:
                 logger.exception("在庫データ取得エラー")
 
         inventory_data = InventoryData(
@@ -544,7 +544,7 @@ class QueryServiceServicer(query_service_pb2_grpc.QueryServiceServicer):
                     )
                     for e in db_entries
                 ]
-            except Exception:
+            except psycopg.Error:
                 logger.exception("トップ商品データ取得エラー")
 
         response_text = generate_top_products_response(entries, period_label)
