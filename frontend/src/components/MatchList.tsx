@@ -24,11 +24,11 @@ export function MatchList({ matches, onSelect, selectedProductId }: MatchListPro
 	return (
 		<div className="match-list">
 			<h2 className="match-list__heading">商品候補</h2>
-			<div className="match-list__items" aria-label="商品候補リスト">
+			<ul className="match-list__items" aria-label="商品候補リスト">
 				{matches.map((match) => {
 					const isSelected = match.productId === selectedProductId;
 					return (
-						<div
+						<li
 							key={match.productId}
 							className={`match-list__item ${isSelected ? "match-list__item--selected" : ""}`}
 							data-selected={isSelected}
@@ -46,10 +46,10 @@ export function MatchList({ matches, onSelect, selectedProductId }: MatchListPro
 									{match.quantity > 0 && <span className="match-list__quantity">数量: {match.quantity}</span>}
 								</span>
 							</button>
-						</div>
+						</li>
 					);
 				})}
-			</div>
+			</ul>
 		</div>
 	);
 }

@@ -81,7 +81,7 @@ export function ProductSearch({
 					onChange={handleInputChange}
 					aria-label="商品名検索"
 				/>
-				{isSearching && <span className="product-search__loading" aria-label="検索中" />}
+				{isSearching && <output className="product-search__loading" aria-label="検索中" />}
 			</div>
 
 			{searchError && (
@@ -93,9 +93,9 @@ export function ProductSearch({
 			{isRegistering && <output className="product-search__registering">辞書に登録中...</output>}
 
 			{searchResults.length > 0 && (
-				<div className="product-search__results" aria-label="検索結果">
+				<ul className="product-search__results" aria-label="検索結果">
 					{searchResults.map((product) => (
-						<div key={product.productId} className="product-search__result-item">
+						<li key={product.productId} className="product-search__result-item">
 							<button
 								type="button"
 								className="product-search__result-button"
@@ -109,9 +109,9 @@ export function ProductSearch({
 									{product.price > 0 && <span className="product-search__result-price">&yen;{product.price}</span>}
 								</span>
 							</button>
-						</div>
+						</li>
 					))}
-				</div>
+				</ul>
 			)}
 
 			{searchQuery.length > 0 && !isSearching && searchResults.length === 0 && !searchError && (
