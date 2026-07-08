@@ -33,6 +33,8 @@ class QueryResource {
 
     companion object {
         private const val DEFAULT_TOP_N = 5
+        private const val MIN_TOP_N = 1
+        private const val MAX_TOP_N = 100
     }
 
     @Inject
@@ -119,7 +121,8 @@ class QueryResource {
         @QueryParam("limit") limit: Int?,
     ): Response {
         val effectivePeriod = period ?: "today"
-        val effectiveLimit = limit ?: DEFAULT_TOP_N
+        // 負数・ゼロ・過大値がそのまま LIMIT に渡らないよう [1, 100] に丸める
+        val effectiveLimit = (limit ?: DEFAULT_TOP_N).coerceIn(MIN_TOP_N, MAX_TOP_N)
         val (from, to, label) = resolvePeriod(effectivePeriod)
 
         val results = salesRepository.topProductsBetween(from, to, effectiveLimit)

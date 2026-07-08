@@ -17,7 +17,7 @@ from pos_voice_concierge.product_repository import (
 from pos_voice_concierge.product_repository import (
     TopProductEntry as RepoTopProductEntry,
 )
-from pos_voice_concierge.query_service import QueryServiceServicer
+from pos_voice_concierge.query_service import QueryServiceServicer, _parse_top_n
 
 
 class FakeServicerContext:
@@ -292,6 +292,68 @@ class TestImportAliases:
         request = query_service_pb2.ImportAliasesRequest(json_data="invalid json")
         response = servicer.ImportAliases(request, context)
         assert not response.success
+
+    def test_import_invalid_json_returns_generic_message(self, servicer, context):
+        """不正JSONのインポート失敗時、例外詳細を漏らさず汎用メッセージを返す（#37）."""
+        request = query_service_pb2.ImportAliasesRequest(json_data="{not valid")
+        response = servicer.ImportAliases(request, context)
+        assert not response.success
+        assert response.imported_count == 0
+        assert response.message == "インポートに失敗しました。入力データの形式を確認してください。"
+
+    def test_import_missing_field_returns_generic_message(self, servicer, context):
+        """必須フィールド欠落時も内部例外（KeyError等）を漏らさない（#37）."""
+        request = query_service_pb2.ImportAliasesRequest(json_data='[{"alias": "コーラ"}]')
+        response = servicer.ImportAliases(request, context)
+        assert not response.success
+        assert "失敗しました" in response.message
+        assert "KeyError" not in response.message
+        assert "product_name" not in response.message
+
+
+class TestParseTopN:
+    """トップN件数のバリデーション（#28）."""
+
+    def test_valid_value_passes_through(self):
+        assert _parse_top_n("50") == 50
+
+    def test_zero_is_clamped_to_min(self):
+        assert _parse_top_n("0") == 1
+
+    def test_negative_is_clamped_to_min(self):
+        assert _parse_top_n("-5") == 1
+
+    def test_oversized_is_clamped_to_max(self):
+        assert _parse_top_n("999") == 100
+
+    def test_non_numeric_falls_back_to_default(self):
+        assert _parse_top_n("abc") == 5
+
+
+class TestTopProductsValidation:
+    """トップN件数がリポジトリに渡る前にクランプされることの検証（#28）."""
+
+    def test_oversized_n_clamped_before_query(
+        self,
+        servicer_with_repo,
+        context,
+        mock_repository,
+    ):
+        request = query_service_pb2.QueryRequest(text="売上トップ999を教えて")
+        servicer_with_repo.ExecuteQuery(request, context)
+        call_args = mock_repository.top_products_between.call_args
+        assert call_args.args[2] == 100
+
+    def test_zero_n_clamped_before_query(
+        self,
+        servicer_with_repo,
+        context,
+        mock_repository,
+    ):
+        request = query_service_pb2.QueryRequest(text="売上トップ0を教えて")
+        servicer_with_repo.ExecuteQuery(request, context)
+        call_args = mock_repository.top_products_between.call_args
+        assert call_args.args[2] == 1
 
 
 class TestE2EQueryFlow:

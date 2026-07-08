@@ -138,6 +138,49 @@ class QueryResourceTest {
     }
 
     @Test
+    fun `websocket handshake without auth returns 401`() {
+        // Issue #25: /ws/** も認証必須。未認証ハンドシェイクは 401。
+        given()
+            .`when`().get("/ws/voice")
+            .then()
+            .statusCode(401)
+    }
+
+    @Test
+    fun `rest endpoint ignores access_token query param`() {
+        // access_token クエリは WebSocket パス限定。REST はヘッダーのみ受け付ける。
+        given()
+            .queryParam("access_token", TEST_API_KEY)
+            .`when`().get("/api/query/sales")
+            .then()
+            .statusCode(401)
+    }
+
+    @Test
+    fun `top products clamps negative limit without error`() {
+        // Issue #28: 負数の limit でも 500 にならず 200（LIMIT に不正値が渡らない）。
+        given()
+            .header("Authorization", "Bearer $TEST_API_KEY")
+            .queryParam("period", "today")
+            .queryParam("limit", -5)
+            .`when`().get("/api/query/top-products")
+            .then()
+            .statusCode(200)
+            .body("periodLabel", `is`("今日"))
+    }
+
+    @Test
+    fun `top products clamps oversized limit without error`() {
+        given()
+            .header("Authorization", "Bearer $TEST_API_KEY")
+            .queryParam("period", "today")
+            .queryParam("limit", 100000)
+            .`when`().get("/api/query/top-products")
+            .then()
+            .statusCode(200)
+    }
+
+    @Test
     fun `health endpoint is accessible without auth`() {
         given()
             .`when`().get("/health")
