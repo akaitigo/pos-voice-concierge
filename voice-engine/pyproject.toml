@@ -9,7 +9,7 @@ dependencies = [
     "openai-whisper>=20240930",
     "rapidfuzz>=3.6",
     "numpy>=1.26",
-    "psycopg[binary]>=3.1",
+    "psycopg[binary]>=3.3.3",
 ]
 
 [project.optional-dependencies]
