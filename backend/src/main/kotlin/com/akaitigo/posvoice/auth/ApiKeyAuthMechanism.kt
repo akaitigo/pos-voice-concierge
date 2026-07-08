@@ -43,7 +43,7 @@ class ApiKeyAuthMechanism : HttpAuthenticationMechanism {
     }
 
     private fun extractApiKey(context: RoutingContext): String? {
-        val authHeader = context.request().getHeader(AUTHORIZATION_HEADER)
+        val authHeader: String? = context.request().getHeader(AUTHORIZATION_HEADER)
         return authHeader
             ?.takeIf { it.startsWith(BEARER_PREFIX) }
             ?.substring(BEARER_PREFIX.length)

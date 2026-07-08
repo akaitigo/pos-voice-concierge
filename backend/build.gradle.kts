@@ -1,7 +1,7 @@
 plugins {
-    kotlin("jvm") version "2.3.20"
-    kotlin("plugin.allopen") version "2.3.21"
-    id("io.quarkus") version "3.34.5"
+    kotlin("jvm") version "2.4.0"
+    kotlin("plugin.allopen") version "2.4.0"
+    id("io.quarkus") version "3.36.1"
     id("io.gitlab.arturbosch.detekt") version "1.23.8"
 }
 
@@ -22,7 +22,7 @@ dependencies {
     implementation("io.quarkus:quarkus-grpc")
     implementation("io.quarkus:quarkus-websockets")
     implementation("io.quarkus:quarkus-security")
-    implementation("com.google.protobuf:protobuf-kotlin:4.34.1")
+    implementation("com.google.protobuf:protobuf-kotlin:4.35.0")
     implementation("io.quarkus:quarkus-jdbc-postgresql")
     implementation("io.quarkus:quarkus-hibernate-orm-panache-kotlin")
     implementation("io.quarkus:quarkus-flyway")
