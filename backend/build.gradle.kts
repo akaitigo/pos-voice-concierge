@@ -1,6 +1,6 @@
 plugins {
     kotlin("jvm") version "2.4.10"
-    kotlin("plugin.allopen") version "2.4.10"
+    kotlin("plugin.allopen") version "2.4.20"
     id("io.quarkus") version "3.39.1"
     id("io.gitlab.arturbosch.detekt") version "1.23.8"
 }
